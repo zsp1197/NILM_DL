@@ -1,7 +1,9 @@
 import pandas as pd
 from copy import deepcopy
 
-import zhai_tools.Tools as  Tools
+import Tools
+
+
 class Data_store(object):
     '''
     keys: all keys belonging to the store
@@ -9,6 +11,7 @@ class Data_store(object):
     keys_dict: {appliance name:{instance name:[key]}}
     '''
     def __init__(self, redd_hdf5_path):
+        self.redd_hdf5_path=redd_hdf5_path
         self.store = pd.HDFStore(redd_hdf5_path)
         self.get_applance_keys()
 
@@ -63,22 +66,26 @@ class Data_store(object):
         try:
             theS
         except:
-            raise ValueError('can not find the day or the appliance' )
+            raise ValueError('can not find the day or the appliance')
         ps = pd.Series(index=theS.index, data=theS.values)
         return ps
 
-    # def get_keys_dict_for_houses(self):
-    #     result={}
-    #     keys_dict=deepcopy(self.keys_dict)
-    #     houses=[]
-    #     for key in self.keys:
-    #         houses.append(key.split('/')[3].split('-')[0])
-    #     houses=tuple(Tools.list_move_duplicates(houses))
-    #     for house in houses:
-    #         house_dict={}
-    #         for appliance_name, instances_dict in keys_dict.items():
-    #             new_list=[]
-    #             for instance_name,keys_list in instances_dict.items():
-    #                 if(house in instance_name):
-    #                     new_list.append(keys_list)
-
+    # def unknown_app_power(self, pss, meter_power):
+    #     '''
+    #
+    #     :param pss:
+    #     :param meter_power:
+    #     :return:
+    #     '''
+    #     for i, ps in enumerate(pss):
+    #         if i == 0:
+    #             total = pss[i]
+    #         else:
+    #             total += pss[i]
+    #     result = meter_power - total
+    #     idx = result < 0
+    #     count = np.count_nonzero(idx)
+    #     result[idx] = np.zeros(count)
+    #     clustering = Clustering()
+    #     centers_list = clustering.deal_with_ps(ps=result, not_deal_off=False)
+    #     return result, centers_list

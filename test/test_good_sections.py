@@ -56,7 +56,7 @@ class TestGood_sections(TestCase):
                             arrowprops=dict(facecolor='black', shrink=0.03)
                             )
             count+=1
-            ps.plot(label='total',color='b')
+            ps.plot(label='total',color='k')
             if(count>3):
                 break
         # self.house.mainMeter.plot(label='total')

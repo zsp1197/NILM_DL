@@ -9,7 +9,7 @@ import pandas as pd
 from datamarket.Data_store import Data_store
 import matplotlib.pyplot as plt
 import numpy as np
-import zhai_tools.Tools as zht
+import Tools
 import zhai_tools.Clustering as zhcluster
 import time
 
@@ -34,19 +34,22 @@ class TestHouse(TestCase):
         # ps=ps.between_time('2011-04-24 20:00', '2011-04-25 22:00')
         # ps.plot()
         pss = house.get_good_pss(ps=ps)
+        thepss=[]
         for theps in pss:
-            theps.plot()
-
+            thepss.append(theps)
+        Tools.server_pss_plot(thepss)
+        Tools.server_ps_plot(ps)
         # df=ps.to_frame()
         # print(df)
-        plt.show()
+        # plt.show()
+
 
     def test_sax(self):
         rng1 = pd.date_range('1/1/2011', periods=24, freq='H')
         rng2 = pd.date_range('1/2/2011', periods=24, freq='H')
         rng3 = pd.date_range('1/3/2011', periods=22, freq='H')
         ts1 = pd.Series(10 + np.random.randn(len(rng1)), index=rng1)
-        ts1 = zht.up_sample_ps(ps=ts1)
+        ts1 = Tools.up_sample_ps(ps=ts1)
         ts2 = pd.Series(1000 + np.random.randn(len(rng2)), index=rng2)
         ts3 = pd.Series(500 + np.random.randn(len(rng3)), index=rng3)
 
@@ -65,7 +68,7 @@ class TestHouse(TestCase):
         :return: list[tuples(delata_value,total_value,start_time,delta_time)]
         '''
         # list of tuples (starttime(pd.timestamp),endtime(pd.timestamp), cluster center value)
-        naive_description = zht.ps2description(ps=ps, centers=Parameters().sax_steps)
+        naive_description = Tools.ps2description(ps=ps, centers=Parameters().sax_steps)
         result = []
         for i, thenaive in enumerate(naive_description):
             if (i == 0):
@@ -81,7 +84,7 @@ class TestHouse(TestCase):
         # rng3 = pd.date_range('1/3/2011', periods=22, freq='H')
         ts1 = pd.Series(10 + np.random.randn(len(rng1)), index=rng1)
         start = time.clock()
-        ts2 = zht.up_sample_ps(ps=deepcopy(ts1))
+        ts2 = Tools.up_sample_ps(ps=deepcopy(ts1))
         elapsed = (time.clock() - start)
         print("Time used:", elapsed)
 

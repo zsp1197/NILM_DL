@@ -7,6 +7,7 @@ import numpy as np
 
 from Parameters import Parameters
 from datamarket.Data_store import Data_store
+from datamarket.Event_detection import Event_detection
 
 '''
 e.g.
@@ -22,6 +23,7 @@ for ps in gs.pss:
         thelabel = self.house.labeling(chunk=chunk)
 '''
 
+
 class Chunk(object):
     def __init__(self, delta_value, total_value, start_time, delta_time):
         self.delta_value = delta_value
@@ -32,13 +34,14 @@ class Chunk(object):
 
 class House(object):
     @zht.check_func_input_output_type_static
-    def __init__(self, data_store: Data_store, house_idx: str, parameters: Parameters):
+    def __init__(self, data_store: Data_store, house_idx: str, parameters: Parameters,check_good_sections=True):
         # house_idx is str! maybe can be named as zhai
         self.data_store = data_store
         self.house_idx = house_idx
         self.parameters = parameters
         self.get_instances_belong2House()
-        self.instance_good_sections_dict = self.get_instance_sections()
+        if check_good_sections:
+            self.instance_good_sections_dict = self.get_instance_sections()
 
     def get_total_good_section(self):
         self.aggregate()
@@ -105,15 +108,25 @@ class House(object):
         :return: list[chunk]
         '''
         # 以前KNN聚类的方法
-        naive_description = zht.ps2description(ps=ps, centers=self.parameters.sax_steps)
-        # naive_description = zht.ps2description_event(ps=ps, para=self.parameters)
+        ed = Event_detection(ps=ps, parameters=self.parameters)
+        naive_description = ed.delta_based()
+        # naive_description = ed.knn_based()
         result = []
         for i, thenaive in enumerate(naive_description):
+            # if (i == 0):
+            #     result.append(Chunk(thenaive[2], thenaive[2], thenaive[0], thenaive[1] - thenaive[0]))
+            # else:
+            #     result.append(Chunk(delta_value=
+            #                         ps[thenaive[0]] - ps[naive_description[i - 1][1]], total_value=thenaive[2],
+            #                         start_time=thenaive[0], delta_time=thenaive[1] - thenaive[0]))
             if (i == 0):
-                result.append(Chunk(thenaive[2], thenaive[2], thenaive[0], thenaive[1] - thenaive[0]))
+                result.append(
+                    Chunk(delta_time=thenaive[1] - thenaive[0], delta_value=ps.values[0], total_value=ps.values[0],
+                          start_time=thenaive[0]))
             else:
                 result.append(Chunk(delta_value=
-                                    ps[thenaive[0]]-ps[naive_description[i-1][1]], total_value=thenaive[2],
+                                    ps[thenaive[0]] - ps[naive_description[i - 1][1]],
+                                    total_value=ps[thenaive[0]:thenaive[1]].mean(),
                                     start_time=thenaive[0], delta_time=thenaive[1] - thenaive[0]))
         return result
 
@@ -187,7 +200,7 @@ class Good_sections(object):
         # for chunk in self.chunks_index:
         #
         #     pss.append(zht.ps_between_timestamp(self.ps, chunk[0], chunk[1]))
-        self.ps=zht.ps_concatenate(pss=pss)
+        self.ps = zht.ps_concatenate(pss=pss)
         return pss
 
     @zht.check_func_input_output_type_static

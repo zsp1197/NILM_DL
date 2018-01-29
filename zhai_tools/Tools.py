@@ -193,6 +193,10 @@ def most_member_of_list_with_weights(thelist: list, weights: list):
 @check_func_input_output_type_static
 def power_consumption_between_time(ps: pd.Series, startTime: pd.Timestamp, endTime: pd.Timestamp):
     theps = ps[startTime:endTime]
+    return ps_consumption(theps)
+
+
+def ps_consumption(theps):
     result = 0
     for i, item in enumerate(theps):
         if (i == len(theps) - 1):

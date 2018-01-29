@@ -3,8 +3,7 @@ import traceback
 from sklearn import mixture
 from sklearn.covariance import EllipticEnvelope
 
-import Tools
-from zhai_tools.Data_store import Data_store
+import Tools,os
 from copy import deepcopy
 
 from sklearn.datasets import make_blobs
@@ -19,17 +18,26 @@ import pandas as pd
 from collections import Iterable
 from scipy.spatial import distance_matrix
 # import baddict
+from datamarket.Data_store import Data_store
 
 
 class Clustering(object):
     _on_threshold = 8
     center_file = 'allappliances_refinedes.csv'
 
-    def __init__(self, hdf5_path):
-        self.data_store = Data_store(hdf5_path)
+    def __init__(self, hdf5_path='我这么做是为什么，我快乐么，这是我的初心么，好累啊'):
+        if(not hdf5_path=='我这么做是为什么，我快乐么，这是我的初心么，好累啊'):
+            self.data_store = Data_store(hdf5_path)
+
         Y = np.array([150, 100, 80, 50, 40, 30, 20, 10, 6, 5, 2])
         X = np.array([1500, 1000, 700, 500, 400, 200, 100, 50, 10, 4, 0])
         self.p = np.poly1d(np.polyfit(X, Y, 3))
+
+    def deal_with_ps_b(self, ps=None,not_deal_off=True):
+        a = self.find_states_kmeans_step1(ps)
+        naiveresult = self.cluster2df(a, ps)
+        b = self.find_states_kmeans_step2(naiveresult, leastmembers=40)
+        return [i['value'][0] for i in b]
 
     def deal_with_ps(self, ps=None, key=None, not_deal_off=True):
         def do_clusting(ps):
@@ -160,7 +168,7 @@ class Clustering(object):
                       UserWarning)
         return clusterer_list[-1]
 
-    def find_states_kmeans_step2(self, resultlist, leastmembers=1000):
+    def find_states_kmeans_step2(self, resultlist, leastmembers=1):
         '''
         this step could delete the clusters which have nor much members(>10) or a little  average_inertia, which is calculated by polyfitting
         :param resultlist: required by running cluster2df()
@@ -334,10 +342,10 @@ class Clustering(object):
             if (i == 0):
                 temp = var
                 last_i = 0
-            elif (i == len(ps)):
-                pass
+            # elif (i == len(ps)):
+            #     pass
             else:
-                if (temp != var):
+                if ((temp != var) or (i == len(ps)-1)):
                     theTuple = (ps_index[last_i], ps_index[i], centers[temp])
                     result_list.append(theTuple)
                     temp = var
@@ -543,13 +551,17 @@ class Clustering(object):
         return result
 
     def appliance_instance_2_powerTime_dict(self, appliance_name, instance):
-        center_dict = self.read_center_file()
+        center_dict = self.centerDict
         try:
             centers = center_dict[appliance_name][instance]
         except:
             warnings.warn('no such instance ' + appliance_name + ' ' + instance)
             return
         ps = self.data_store.get_instance_ps(appliance_name=appliance_name, instance=instance)
+
+        return self.behavior_dicts(centers, ps)
+
+    def behavior_dicts(self, centers, ps):
         timedict = self.ps_and_center_2_timedict(ps=ps, centers=centers)
         powerdict = self.ps_and_center_2_powerdict(ps=ps, centers=centers)
         powerConsumeDict = self.ps_and_center_2_powerConsumeDict(ps=ps, centers=centers)
@@ -571,9 +583,6 @@ class Clustering(object):
                     print()
                 try:
                     thedict = self.appliance_instance_2_powerTime_dict(appliance_name=appliance_name, instance=instance)
-                    # if(~isinstance(thedict,dict)):
-                    #     # if no such dict, continue
-                    #     continue
                     temp_dict.update({instance: thedict})
                 except Exception as err:
                     traceback.print_tb(err.__traceback__)
@@ -591,3 +600,26 @@ class Clustering(object):
             mean, std = self.find_gaussian(to_fit=values_list, outliers_fraction=0.002)
             result.update({center_value: {"consumption_value": (mean, std)}})
         return result
+
+    def getCenterDict(self,thepath):
+        '''
+
+        :get self.centerDict: {appliance name:{instance name:[center value]}}
+        '''
+        df = pd.read_csv(os.path.join(thepath, 'states.txt'), header=None, index_col=0)
+        appliance_instances = list(df.index)
+        states = []
+        appliance_names=[i.split('_')[0] for i in appliance_instances]
+        result=dict(zip(appliance_names,[{} for i in range(len(appliance_names))]))
+
+        for appliance_name in appliance_instances:
+            appliance_type, instance = appliance_name.split('_')
+            states_series = df.loc[appliance_name][1:]
+            states_np = states_series.values
+            states_np = states_np.astype(np.float64)
+            states_np = states_np[~np.isnan(states_np)]
+            temp=list(states_np)
+            temp.append(0)
+            result[appliance_type][instance]=temp
+        self.centerDict=result
+        print()

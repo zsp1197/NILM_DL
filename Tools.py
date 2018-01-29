@@ -1,18 +1,18 @@
 import datetime
-
+import shutil
 import numpy as np
 import pandas as pd
 import pickle
 import collections
 import functools
 import inspect
-from scipy.spatial import distance_matrix
+
 from copy import deepcopy
 
 
-def list2csv(thelist, file_path, seq=','):
+def list2csv(thelist, file_path):
     my_df = pd.DataFrame(thelist)
-    my_df.to_csv(file_path, index=False, header=False, sep=seq)
+    my_df.to_csv(file_path, index=False, header=False)
 
 
 def list_move_duplicates(list):
@@ -28,6 +28,8 @@ def timestamp_2_location_of_day(timestamp, acc='min'):
         return timestamp.hour * 60 + timestamp.minute
     elif (acc == 'hour'):
         return timestamp.hour
+    elif (acc == 'second'):
+        return timestamp.hour * 3600 + timestamp.minute*60+timestamp.second
     else:
         raise ValueError
 
@@ -47,6 +49,8 @@ def idx_of_mem_list(thelist, mem):
     return [i for i, x in enumerate(thelist) if x == mem]
 
 
+def ps_concatenate(pss):
+    return pd.concat(pss)
 
 
 def ps_refine_on(ps, threshold=8, on=True):
@@ -86,6 +90,34 @@ def serialize_object(object, filePath):
     f = open(filePath, 'wb')
     pickle.dump(object, f)
 
+def copyfile(src:str,tgt:str):
+    shutil.copyfile(src, tgt)
+
+def mkdir(path):
+    # 引入模块
+    import os
+
+    # 去除首位空格
+    path = path.strip()
+    # 去除尾部 \ 符号
+    path = path.rstrip("\\")
+
+    # 判断路径是否存在
+    # 存在     True
+    # 不存在   False
+    isExists = os.path.exists(path)
+
+    # 判断结果
+    if not isExists:
+        # 如果不存在则创建目录
+        path + ' 创建成功'
+        # 创建目录操作函数
+        os.makedirs(path)
+        return True
+    else:
+        # 如果目录存在则不创建，并提示目录已存在
+        path + ' 目录已存在'
+        return False
 
 def deserialize_object(filePath):
     # Restore from a file
@@ -142,29 +174,24 @@ def check_func_input_output_type_static(func):
 
     return wrapper
 
-def n_smallest_of_list(n: int, list: list):
+@check_func_input_output_type_static
+def n_smallest_of_list(n:int,list:list):
     import heapq
     return heapq.nsmallest(n, list)[-1]
-
-#TODO test
-@check_func_input_output_type_static
-def ps_concatenate(pss:list)->pd.Series:
-    return pd.Series(pd.concat(pss))
 
 def allUnique(x):
     seen = set()
     return not any(i in seen or seen.add(i) for i in x)
 
-
 @check_func_input_output_type_static
-def most_member_of_list(theist: list):
+def most_member_of_list(theist:list):
     candidate_list = list(set(theist))
     num_of_member = [theist.count(i) for i in candidate_list]
-    biggest = max(num_of_member)
-    if (num_of_member.count(biggest) > 1):
-        result = []
-        for i in range(0, num_of_member.count(biggest)):
-            idx = num_of_member.index(biggest)
+    biggest=max(num_of_member)
+    if(num_of_member.count(biggest)>1):
+        result=[]
+        for i in range(0,num_of_member.count(biggest)):
+            idx=num_of_member.index(biggest)
             result.append(deepcopy(candidate_list[idx]))
             candidate_list.pop(idx)
             num_of_member.pop(idx)
@@ -175,17 +202,20 @@ def most_member_of_list(theist: list):
 @check_func_input_output_type_static
 def most_member_of_list_with_weights(thelist: list, weights: list):
     candidate_list = tuple(set(thelist))
-    votes = [0 for i in range(0, len(candidate_list))]
-    for i, appliance_name in enumerate(candidate_list):
-        for j, mem in enumerate(thelist):
-            if (mem == appliance_name):
-                votes[i] = votes[i] + weights[j]
+    votes=[0 for i in range(0,len(candidate_list))]
+    for i,appliance_name in enumerate(candidate_list):
+        for j,mem in enumerate(thelist):
+           if(mem==appliance_name):
+               votes[i]=votes[i]+weights[j]
     return candidate_list[votes.index(max(votes))]
 
-
 @check_func_input_output_type_static
-def power_consumption_between_time(ps: pd.Series, startTime: pd.Timestamp, endTime: pd.Timestamp):
-    theps = ps[startTime:endTime]
+def power_consumption_between_time(ps:pd.Series,startTime:pd.Timestamp,endTime:pd.Timestamp):
+    theps=ps[startTime:endTime]
+    return ps_consumption(theps)
+
+
+def ps_consumption(theps):
     result = 0
     for i, item in enumerate(theps):
         if (i == len(theps) - 1):
@@ -194,79 +224,61 @@ def power_consumption_between_time(ps: pd.Series, startTime: pd.Timestamp, endTi
     return result
 
 
-@check_func_input_output_type_static
-def ps_between_timestamp(ps: pd.Series, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
-    df = ps.to_frame()
-    a = df[start:end]
-    return deepcopy(pd.Series(index=a.index, data=a[0]))
-
-
-def naivearray2smart(thearray):
-    '''
-    kmeans can only recognize stuff like np.array([[member1],[member2],[member3]])
-    this method can modify [member1,member2,member3] to latter stuff
-    '''
-    for i, var in enumerate(thearray):
-        if (i == 0):
-            result = [[var]]
-        else:
-            result.append([var])
-    return np.array(result)
-
-
-@check_func_input_output_type_static
-def get_label_idx_list(ps: pd.Series, centers: list):
-    '''
-
-    :param ps:
-    :param centers: list of cluster centers
-    :return: list having same length as ps, and each member is assigned a center index of centers
-    '''
-    dm = distance_matrix(naivearray2smart(ps.values), naivearray2smart(centers))
-    label_idx_list = []
-    for mem in dm:
-        idx = np.argmin(mem)
-        label_idx_list.append(idx)
-    return label_idx_list
-
-
-def ps2description(ps, centers):
-    '''
-    这个和summerTime里面那个有很大区别！主要是最后一个chunk被保留！
-    convert pd.Series to a detailed description accrding to centers
-    conters are list of cluster centers, and 
-    :param ps: 
-    :param centers: 
-    :return: list of tuples (starttime(pd.timestamp),endtime(pd.timestamp), cluster center value)
-    '''
-    label_idx_list = get_label_idx_list(ps, centers)
-    result_list = []
-    ps_index = ps.index
-    for i, var in enumerate(label_idx_list):
-        if (i == 0):
-            temp = var
-            last_i = 0
-        elif (i == len(ps) - 1):
-            theTuple = (ps_index[last_i], ps_index[i - 1], centers[temp])
-            result_list.append(theTuple)
-        else:
-            if (temp != var):
-                theTuple = (ps_index[last_i], ps_index[i - 1], centers[temp])
-                result_list.append(theTuple)
-                temp = var
-                last_i = i
-    return result_list
-
-@check_func_input_output_type_static
-def up_sample_ps(ps: pd.Series, freq: str = 'S')->pd.Series:
+def up_sample_ps(ps: pd.Series, freq: str = 'S'):
     '''
     the data maybe compressed, pro-long the data with a fixed sample period
     :param ps:pd.Series(index=datatimeindex,data=power_read)
-    :return: pd.Series
+    :return: pd.Seires
     '''
     index = pd.to_datetime(ps.index)
     longindex = pd.date_range(start=min(index), end=max(index), freq=freq)
     pdf = pd.DataFrame(index=longindex, columns=['0'])
     pdf.ix[index, 0] = ps.values.tolist()
-    pdf = pdf.fillna(method='pad')['0']
-    return pdf
+    pdf = pdf.fillna(method='pad')
+    index=pdf.index
+    data=[i[0] for i in pdf.values]
+    return pd.Series(index=index,data=data)
+
+@check_func_input_output_type_static
+def list_select_with_indexes(thelist:list, indexes:list):
+    if(len(indexes)==1):
+        return [thelist[indexes[0]]]
+    from operator import itemgetter
+    return list(itemgetter(*indexes)(thelist))
+
+@check_func_input_output_type_static
+def split_list_to_chunks(thelist:list,n:int):
+    """n-sized chunks from thelist."""
+    return [thelist[i:i + n] for i in range(0, len(thelist), n)]
+
+@check_func_input_output_type_static
+def server_ps_plot(ps:pd.Series,label=' '):
+    '''
+    excecute "python -m visdom.server" in the console of server beforehand
+    login http://202.120.60.50:8097/ and see what you got
+    :param ps:
+    :return:
+    '''
+    from visdom import Visdom
+    viz = Visdom()
+    viz.line(X=np.array(range(len(ps))),Y=ps.values,opts=dict(
+        xlabel='Time',
+        ylabel='Power',
+        title=label
+    ))
+
+
+def server_pss_plot(pss:list):
+    '''
+    excecute "python -m visdom.server" in the console of server beforehand
+    login http://202.120.60.50:8097/ and see what you got
+    :param pss:list of ps
+    :return:
+    '''
+    from visdom import Visdom
+    viz = Visdom()
+    lengths=[len(ps) for ps in pss]
+    viz.line(X=np.array(range(max(lengths))),Y=np.column_stack([ps.values for ps in pss]),opts=dict(
+        xlabel='Time',
+        ylabel='Power'
+    ))
