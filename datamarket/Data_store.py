@@ -27,6 +27,7 @@ class Data_store(object):
             appliance_name=key.split('/')[2]
             instance_name=key.split('/')[3]
             try:
+                #TODO 第一天数据被舍弃
                 # 看有没有这个电器对应的dict，若没有则创建
                 instance_dict=result[appliance_name]
             except:

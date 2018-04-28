@@ -1,13 +1,16 @@
 from copy import deepcopy
 
-import zhai_tools.Tools as zht
+import Tools as zht
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 
 from Parameters import Parameters
-from datamarket.Data_store import Data_store
+# from datamarket.Data_store import Data_store
 from datamarket.Event_detection import Event_detection
+from datamarket.Appliance_class import Appliance_state
+from datamarket.Data_store import Data_store
+from datamarket.StateManager import StateManager
+from datamarket.feedState_r2 import getState_r2_list
 
 '''
 e.g.
@@ -34,7 +37,7 @@ class Chunk(object):
 
 class House(object):
     @zht.check_func_input_output_type_static
-    def __init__(self, data_store: Data_store, house_idx: str, parameters: Parameters,check_good_sections=True):
+    def __init__(self, data_store: Data_store, house_idx: str, parameters: Parameters, check_good_sections=False):
         # house_idx is str! maybe can be named as zhai
         self.data_store = data_store
         self.house_idx = house_idx
@@ -42,6 +45,24 @@ class House(object):
         self.get_instances_belong2House()
         if check_good_sections:
             self.instance_good_sections_dict = self.get_instance_sections()
+
+    def get_states_list_sm_by_TIE(self, states_dict):
+        self.states_dict_tie = states_dict
+        self.states_list = []
+        for appliance_name, instance in self.instance_names:
+            try:
+                centers = list(self.states_dict_tie[appliance_name][instance].keys())
+            except:
+                pass
+            for center in centers:
+                if(center<3):
+                    continue
+                self.states_list.append(
+                    Appliance_state(appliance_type=appliance_name, instance=instance, state_value=center, PROPERTIES=None,
+                                    thedict=None, dataset='redd_tie'))
+        # self.state_r2_list=getState_r2_list(self.states_list)
+        # return self.states_list
+        self.sm=StateManager(instance_names=self.instance_names,states_dict=self.states_dict_tie)
 
     def get_total_good_section(self):
         self.aggregate()
@@ -129,6 +150,8 @@ class House(object):
                                     total_value=ps[thenaive[0]:thenaive[1]].mean(),
                                     start_time=thenaive[0], delta_time=thenaive[1] - thenaive[0]))
         return result
+
+    # def
 
     def get_good_pss(self, ps: pd.Series):
         '''
@@ -236,5 +259,5 @@ def feed_Houses(data_store):
         houses_idx.append(key.split('/')[3].split('-')[0])
     houses_idx = tuple(zht.list_move_duplicates(houses_idx))
     for house_idx in houses_idx:
-        houses.append(House(data_store=data_store, house_idx=house_idx, parameters=Parameters()))
+        houses.append(House(data_store=data_store, house_idx=house_idx, parameters=Parameters()), )
     return houses

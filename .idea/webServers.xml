@@ -2,12 +2,12 @@
 <project version="4">
   <component name="WebServers">
     <option name="servers">
-      <webServer id="b500937e-fa97-470d-bf47-f2f54cc61a79" name="server" url="http://202.120.60.50">
-        <fileTransfer host="202.120.60.50" port="22" rootFolder="/home/uftp/zhai/python/" accessType="SFTP">
+      <webServer id="155daabc-9a35-4621-bd2b-2a01dbda730e" name="uftp" url="http://202.120.60.50">
+        <fileTransfer host="202.120.60.50" port="822" rootFolder="/home/uftp/zhai/python/" accessType="SFTP">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" />
           </advancedOptions>
-          <option name="port" value="22" />
+          <option name="port" value="822" />
         </fileTransfer>
       </webServer>
     </option>

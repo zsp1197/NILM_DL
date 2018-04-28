@@ -80,6 +80,7 @@ for i,day in enumerate(daysTimeStamp):
         thenewdescriptions.append(description)
         labels += getLabels(starttime, endtime, house)
     thelongdescription += thenewdescriptions
+    print('完成'+day)
 Tools.serialize_object(thelongdescription, 'instances')
 Tools.serialize_object(labels, 'labels')
 print()

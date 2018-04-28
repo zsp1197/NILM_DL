@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="server" showNewOnSourceInSync="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="server" compareModeInSync="TIMESTAMP">
     <serverData>
       <paths name="server">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/NILM_DL" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="uftp">
         <serverdata>
           <mappings>
             <mapping deploy="/NILM_DL/" local="$PROJECT_DIR$" web="/" />
