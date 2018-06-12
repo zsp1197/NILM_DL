@@ -248,6 +248,34 @@ def list_select_with_indexes(thelist:list, indexes:list):
     from operator import itemgetter
     return list(itemgetter(*indexes)(thelist))
 
+
+def get_batch(inputs, targets, num_per_batch):
+    '''
+    最后一个batch可能数目不足num_per_batch
+    :param inputs:
+    :param targets:
+    :param num_per_batch:
+    :return:
+    '''
+    assert len(inputs) == len(targets)
+    input_iter = inputs.__iter__()
+    target_iter = targets.__iter__()
+    input_batch = []
+    target_batch = []
+    num = 0
+    for _input in input_iter:
+        input_batch.append(_input)
+        target_batch.append(target_iter.__next__())
+        num += 1
+        if (num == num_per_batch):
+            yield input_batch, target_batch
+            input_batch = []
+            target_batch = []
+            num = 0
+    if (len(input_batch) > 0):
+        yield input_batch, target_batch
+
+
 @check_func_input_output_type_static
 def split_list_to_chunks(thelist:list,n:int):
     """n-sized chunks from thelist."""

@@ -11,4 +11,4 @@ if (use_cuda):
     device = torch.device("cuda:{0}".format(random.choice(range(torch.cuda.device_count()))))
 else:
     device = torch.device('cpu')
-print('hi there')
+print('hi')
