@@ -4,19 +4,21 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+import Tools
 from Parameters import Parameters
 from Tools import sliding_window
 
 
 class Infer():
-    def credients(self, input_bin, target_bin, predictor):
+    def credients(self, input_bin, target_bin, predictor,paras=Parameters()):
         # assert len(input_bin) == len(target_bin)
+        self.paras=paras
         self.input_bin = input_bin
         self.target_bin = target_bin
         self.predictor = predictor
 
     def infer(self):
-        predicted = self.predictor(self.input_bin)
+        predicted = self.predictor(self.input_bin).view(-1)
         assert len(predicted) == len(self.target_bin)
         assertedTrue = 0
         for predict, target in zip(predicted, self.target_bin):
@@ -45,9 +47,9 @@ class Infer():
         print(assertedTrue)
         return assertedTrue / len(self.target_bin)
 
-    def infer_cms(self,paras=Parameters()):
-        source_len=paras.seq_len
-        # source_len=3
+    def infer_cms(self):
+        source_len=self.paras.seq_len
+        # source_len=2
         _input_list=self.input_bin[0:source_len]
         _target_list=self.target_bin[0:source_len-1]
         from copy import deepcopy
@@ -71,7 +73,32 @@ class Infer():
             if (predicted == _target):
                 assertTrue += 1
         print(assertTrue / len(targets))
+        self.predicted_targets=targets
+        Tools.serialize_object(targets,'predicted_targets')
 
+    def get_predicted_targets(self):
+        try:
+            self.predicted_targets
+        except:
+            try:
+                self.predicted_targets=Tools.deserialize_object('predicted_targets')
+            except:
+                self.infer_cms()
+
+
+    def infer_seqeTime(self,batch_iter,device):
+        for input_batch, target_batch in batch_iter:
+            _inputs = torch.from_numpy(np.array(input_batch)).float().to(device)
+            _targets = torch.from_numpy(np.array(target_batch)[:,:-1]).long().to(device)
+            target = torch.from_numpy(np.array(target_batch)[:, -1]).long().to(device)
+            output = self.predictor(_inputs,_targets).topk(1)[1].reshape(-1)
+            print('只执行一次！')
+        assertTrue = 0
+        for predicted, _target in zip(output, target):
+            if (predicted == _target):
+                assertTrue += 1
+        print(assertTrue)
+        print(assertTrue / len(target))
 
 
 class Predictor():

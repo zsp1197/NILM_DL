@@ -252,12 +252,14 @@ class Good_sections(object):
         return self.parameters.penalty
 
 
-def feed_Houses(data_store):
-    houses_idx = []
+def feed_Houses(data_store,houses_idx=None):
     houses = []
-    for key in data_store.keys:
-        houses_idx.append(key.split('/')[3].split('-')[0])
-    houses_idx = tuple(zht.list_move_duplicates(houses_idx))
+    if(houses_idx==None):
+        houses_idx = []
+        for key in data_store.keys:
+            houses_idx.append(key.split('/')[3].split('-')[0])
+        houses_idx = tuple(zht.list_move_duplicates(houses_idx))
     for house_idx in houses_idx:
-        houses.append(House(data_store=data_store, house_idx=house_idx, parameters=Parameters()), )
+        houses.append(
+            House(data_store=data_store, house_idx=house_idx, parameters=Parameters(), check_good_sections=True))
     return houses
