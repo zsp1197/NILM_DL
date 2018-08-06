@@ -1,5 +1,7 @@
 # Created by zhai at 2018/5/29
 # Email: zsp1197@163.com
+from time import time
+
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -59,6 +61,7 @@ class Infer():
         _target=torch.from_numpy(np.array(_target_list)).unsqueeze(0).long().cuda()
         out=self.predictor(_input,_target).squeeze(0).topk(1)[1]
         targets.append(int(out))
+        start = time()
         for i,input_step in tqdm(enumerate(self.input_bin[source_len:])):
             _target_list.pop(0)
             _target_list.append(int(out))
@@ -68,6 +71,8 @@ class Infer():
             _target = torch.from_numpy(np.array(_target_list)).unsqueeze(0).long().cuda()
             out = self.predictor(_input, _target).squeeze(0).topk(1)[1]
             targets.append(int(out))
+        end=time()
+        print('计算时长：{}'.format(str(end-start)))
         assertTrue = 0
         for predicted, _target in zip(self.target_bin, targets):
             if (predicted == _target):
@@ -81,8 +86,12 @@ class Infer():
             self.predicted_targets
         except:
             try:
+                RuntimeError
+                assert False
                 self.predicted_targets=Tools.deserialize_object('predicted_targets')
+                print('载入预保存的inference')
             except:
+                print('重新生成inference')
                 self.infer_cms()
 
 

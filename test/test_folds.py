@@ -2,16 +2,19 @@
 from unittest import TestCase
 import numpy as np
 import Tools
+import pandas as pd
 # Email: zsp1197@163.com
 from datamarket.folds import Folds
+from test.test_seq2Seq import TestSeq2Seq
 
 
 class TestFolds(TestCase):
     def setUp(self):
-        self.targets=np.array(Tools.deserialize_object('targets_list.store'))
-        self.inputs=np.array(Tools.deserialize_object('inputs_list.store'))
-        self.ints=np.array(list(range(min(self.targets),max(self.targets)+1)))
-        self.folds=Folds(self.inputs,self.targets)
+        # self.targets=np.array(Tools.deserialize_object('targets_list.store'))
+        # self.inputs=np.array(Tools.deserialize_object('inputs_list.store'))
+        # self.ints=np.array(list(range(min(self.targets),max(self.targets)+1)))
+        # self.folds=Folds(self.inputs,self.targets)
+        pass
 
     def test_cut_sequence(self):
         inputs=[(i,i*10,i*100) for i in list(range(100))]
@@ -30,3 +33,9 @@ class TestFolds(TestCase):
 
     def test_walk_seq_kl(self):
         self.folds.walk_seq_kl()
+
+    def get_credients(self):
+        self.t = TestSeq2Seq()
+        self.t.prepareCredients()
+
+

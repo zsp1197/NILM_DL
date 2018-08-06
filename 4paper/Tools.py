@@ -1,5 +1,9 @@
 import datetime
 import shutil
+import warnings
+from collections import deque
+from itertools import islice
+
 import numpy as np
 import pandas as pd
 import pickle
@@ -23,13 +27,31 @@ def list_move_duplicates(list):
     return s
 
 
+def sliding_window(seq, size, step=1):
+    '''
+
+    :param seq:
+    :param size:
+    :param step:
+    :return: Iterator
+    '''
+    # initialize iterators
+    iters = [iter(seq) for i in range(size)]
+    # stagger iterators (without yielding)
+    [next(iters[i]) for j in range(size) for i in range(-1, -j - 1, -1)]
+    while (True):
+        yield [next(i) for i in iters]
+        # next line does nothing for step = 1 (skips iterations for step > 1)
+        [next(i) for i in iters for j in range(step - 1)]
+
+
 def timestamp_2_location_of_day(timestamp, acc='min'):
     if (acc == 'min'):
         return timestamp.hour * 60 + timestamp.minute
     elif (acc == 'hour'):
         return timestamp.hour
     elif (acc == 'second'):
-        return timestamp.hour * 3600 + timestamp.minute*60+timestamp.second
+        return timestamp.hour * 3600 + timestamp.minute * 60 + timestamp.second
     else:
         raise ValueError
 
@@ -91,8 +113,10 @@ def serialize_object(object, filePath):
     pickle.dump(object, f)
     f.close()
 
-def copyfile(src:str,tgt:str):
+
+def copyfile(src: str, tgt: str):
     shutil.copyfile(src, tgt)
+
 
 def mkdir(path):
     # 引入模块
@@ -119,6 +143,7 @@ def mkdir(path):
         # 如果目录存在则不创建，并提示目录已存在
         path + ' 目录已存在'
         return False
+
 
 def deserialize_object(filePath):
     # Restore from a file
@@ -175,24 +200,27 @@ def check_func_input_output_type_static(func):
 
     return wrapper
 
+
 @check_func_input_output_type_static
-def n_smallest_of_list(n:int,list:list):
+def n_smallest_of_list(n: int, list: list):
     import heapq
     return heapq.nsmallest(n, list)[-1]
+
 
 def allUnique(x):
     seen = set()
     return not any(i in seen or seen.add(i) for i in x)
 
+
 @check_func_input_output_type_static
-def most_member_of_list(theist:list):
+def most_member_of_list(theist: list):
     candidate_list = list(set(theist))
     num_of_member = [theist.count(i) for i in candidate_list]
-    biggest=max(num_of_member)
-    if(num_of_member.count(biggest)>1):
-        result=[]
-        for i in range(0,num_of_member.count(biggest)):
-            idx=num_of_member.index(biggest)
+    biggest = max(num_of_member)
+    if (num_of_member.count(biggest) > 1):
+        result = []
+        for i in range(0, num_of_member.count(biggest)):
+            idx = num_of_member.index(biggest)
             result.append(deepcopy(candidate_list[idx]))
             candidate_list.pop(idx)
             num_of_member.pop(idx)
@@ -203,16 +231,17 @@ def most_member_of_list(theist:list):
 @check_func_input_output_type_static
 def most_member_of_list_with_weights(thelist: list, weights: list):
     candidate_list = tuple(set(thelist))
-    votes=[0 for i in range(0,len(candidate_list))]
-    for i,appliance_name in enumerate(candidate_list):
-        for j,mem in enumerate(thelist):
-           if(mem==appliance_name):
-               votes[i]=votes[i]+weights[j]
+    votes = [0 for i in range(0, len(candidate_list))]
+    for i, appliance_name in enumerate(candidate_list):
+        for j, mem in enumerate(thelist):
+            if (mem == appliance_name):
+                votes[i] = votes[i] + weights[j]
     return candidate_list[votes.index(max(votes))]
 
+
 @check_func_input_output_type_static
-def power_consumption_between_time(ps:pd.Series,startTime:pd.Timestamp,endTime:pd.Timestamp):
-    theps=ps[startTime:endTime]
+def power_consumption_between_time(ps: pd.Series, startTime: pd.Timestamp, endTime: pd.Timestamp):
+    theps = ps[startTime:endTime]
     return ps_consumption(theps)
 
 
@@ -223,8 +252,6 @@ def ps_consumption(theps):
             break
         result = result + item * (theps.index[i + 1] - theps.index[i]).seconds
     return result
-
-
 
 
 def up_sample_ps(ps: pd.Series, freq: str = 'S'):
@@ -238,13 +265,14 @@ def up_sample_ps(ps: pd.Series, freq: str = 'S'):
     pdf = pd.DataFrame(index=longindex, columns=['0'])
     pdf.ix[index, 0] = ps.values.tolist()
     pdf = pdf.fillna(method='pad')
-    index=pdf.index
-    data=[i[0] for i in pdf.values]
-    return pd.Series(index=index,data=data)
+    index = pdf.index
+    data = [i[0] for i in pdf.values]
+    return pd.Series(index=index, data=data)
+
 
 @check_func_input_output_type_static
-def list_select_with_indexes(thelist:list, indexes:list):
-    if(len(indexes)==1):
+def list_select_with_indexes(thelist: list, indexes: list):
+    if (len(indexes) == 1):
         return [thelist[indexes[0]]]
     from operator import itemgetter
     return list(itemgetter(*indexes)(thelist))
@@ -278,12 +306,58 @@ def get_batch(inputs, targets, num_per_batch):
 
 
 @check_func_input_output_type_static
-def split_list_to_chunks(thelist:list,n:int):
+def split_list_to_chunks(thelist: list, n: int):
     """n-sized chunks from thelist."""
     return [thelist[i:i + n] for i in range(0, len(thelist), n)]
 
+
+def server_updateTrace_plot(x: np.array, y: np.array, win=None, xlabel='iters', ylabel='loss', vis=None):
+    '''
+    第一次执行时，输入win=None，以后执行时，输入win为上一步的输出win
+    e.g.
+    win=server_updateTrace_plot(x=np.array([1,2,3]),y=np.array([321,453,542]))
+    server_updateTrace_plot(x=np.array([4,5,6]),y=np.array([312,345,453]),win=win)
+    :param x: np.array
+    :param y: np.array
+    :param win:
+    :param xlabel:
+    :param ylabel:
+    :return:
+    '''
+    from visdom import Visdom
+    if (vis == None):
+        vis = Visdom()
+        warnings.warn('may cause error when dealing with large dataset!')
+    if (not vis.check_connection()):
+        warnings.warn('excecute "python -m visdom.server"')
+        ConnectionError
+    else:
+        if (win == None):
+            win = vis.line(X=x.reshape(-1, 1), Y=y.reshape(-1, 1), opts=dict(
+                xlabel=xlabel,
+                ylabel=ylabel
+            ))
+        else:
+            vis.line(X=x.reshape(-1, 1), Y=y.reshape(-1, 1), win=win, update='append')
+
+    return win
+
+
+class ServerUpdateTracePlot():
+    def __init__(self):
+        self.win = None
+        from visdom import Visdom
+        self.vis = Visdom()
+        self.step = 0
+
+    def update(self, y: np.array, xlabel='iters', ylabel='loss'):
+        self.win = server_updateTrace_plot(np.array(self.step), y, win=self.win, vis=self.vis, xlabel=xlabel,
+                                           ylabel=ylabel)
+        self.step += 1
+
+
 @check_func_input_output_type_static
-def server_ps_plot(ps:pd.Series,label=' '):
+def server_ps_plot(ps: pd.Series, label=' '):
     '''
     excecute "python -m visdom.server" in the console of server beforehand
     login http://202.120.60.50:8097/ and see what you got
@@ -292,14 +366,14 @@ def server_ps_plot(ps:pd.Series,label=' '):
     '''
     from visdom import Visdom
     viz = Visdom()
-    viz.line(X=np.array(range(len(ps))),Y=ps.values,opts=dict(
+    viz.line(X=np.array(range(len(ps))), Y=ps.values, opts=dict(
         xlabel='Time',
         ylabel='Power',
         title=label
     ))
 
 
-def server_pss_plot(pss:list):
+def server_pss_plot(pss: list):
     '''
     excecute "python -m visdom.server" in the console of server beforehand
     login http://202.120.60.50:8097/ and see what you got
@@ -308,8 +382,8 @@ def server_pss_plot(pss:list):
     '''
     from visdom import Visdom
     viz = Visdom()
-    lengths=[len(ps) for ps in pss]
-    viz.line(X=np.array(range(max(lengths))),Y=np.column_stack([ps.values for ps in pss]),opts=dict(
+    lengths = [len(ps) for ps in pss]
+    viz.line(X=np.array(range(max(lengths))), Y=np.column_stack([ps.values for ps in pss]), opts=dict(
         xlabel='Time',
         ylabel='Power'
     ))

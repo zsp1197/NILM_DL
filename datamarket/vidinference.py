@@ -18,8 +18,10 @@ class Inference_House_Vid():
     def __init__(self, house, label_series, inputs_bin, main_meter_ps, label_series_bin, predicted_label_series_bin,
                  dlsm):
         # self.house=house
-        self.house = Tools.deserialize_object('house.store')
-        # self.house=self.prepareHouse('1')
+        try:
+            self.house = Tools.deserialize_object('house.store')
+        except:
+            self.house=self.prepareHouse('1')
         self.inputs_bin = inputs_bin
         self.label_series = label_series
         self.main_meter_ps = main_meter_ps
@@ -28,6 +30,7 @@ class Inference_House_Vid():
         self.predicted_label_series_bin = predicted_label_series_bin
 
     def prepareHouse(self, house_idx='1'):
+        print('prepare house')
         try:
             nilm_dataset = NILMDataset('../data/allappliances4.hdf5', '../data/allappliancesdict_refine4')
         except:
@@ -37,6 +40,7 @@ class Inference_House_Vid():
         house.pss_equal_length()
         house.aggregate()
         house.walk_state_r2()
+        Tools.serialize_object(house,'house.store')
         return house
 
     def walk_appliances_consumption(self):
@@ -51,9 +55,11 @@ class Inference_House_Vid():
         self.appliance_consumption_predicted = result
         # self.load_appliance_consumption_predicted('dic_dic_ps',self.house.instance_names)
         try:
+            assert False
             self.load_appliance_consumption_predicted('dic_dic_ps', self.house.instance_names)
             print('用已经预处理好的predicted')
         except:
+            print('重新获取predicted')
             for input_bin, target_ss in tqdm(zip(self.inputs_bin, self.predicted_label_series_bin),
                                              desc='appliance consumption'):
                 self.deal_time_instance(input_bin, target_ss)
@@ -69,9 +75,15 @@ class Inference_House_Vid():
     def reproduce_ps(self):
         r2_dict = self.house.state_r2_dict
         predicted_total = pd.Series()
+        store=pd.HDFStore('reproduce_ps_2.h5')
         for app, instance in self.house.instance_names:
             instance_ps = self.appliance_consumption_predicted[app][instance]
+            store[app+'__'+instance]=instance_ps[1082000:1093000]
             predicted_total = predicted_total.add(instance_ps, fill_value=0)
+        store['mainMeter']=self.main_meter_ps[1082000:1093000]
+        store['predicted']=predicted_total[1082000:1093000]
+
+
         Tools.server_pss_plot([predicted_total, self.main_meter_ps])
 
     def f_scores(self):
@@ -83,9 +95,10 @@ class Inference_House_Vid():
                 scores_dict.update({appliane_state.appliance_type: {}})
             scores_dict[appliane_state.appliance_type].update({appliane_state.instance: pd.Series()})
         for app, instance in self.house.instance_names:
+            # TODO 开机阈值
             scores_dict[app][instance] = self.tp_fn_fp_tn_4ps(self.appliance_consumption_predicted[app][instance],
                                                          self.house.appliance_pss_equal_length_dict[app][instance],
-                                                         10)
+                                                         25)
         tp_total,fn_total,fp_total,tn_total=0,0,0,0
         f1_macro=0
         for app, instance in self.house.instance_names:
@@ -104,7 +117,8 @@ class Inference_House_Vid():
             except:
                 print('ERROR in f1')
         f1_macro=f1_macro/len(self.house.instance_names)
-        return f1_micro,f1_macro
+        acc=(tp_total+tn_total)/(tp_total+tn_total+fn_total+fp_total)
+        return f1_micro,f1_macro,acc
 
     def deal_time_instance(self, input_bin, target_ss):
         start_time = input_bin[0]
@@ -141,14 +155,12 @@ class Inference_House_Vid():
         timestamps = self.main_meter_ps.index
         # 1-a/(2b)
         a, b = 0, 0
-        for t in tqdm(timestamps, desc='proportion_total_energy_assigned'):
-            for app, instance in app_instances:
-                try:
-                    a = a + np.abs(truth_dict[app][instance][t] - predicted_dict[app][instance][t])
-                    b = b + predicted_dict[app][instance][t]
-                except:
-                    # 当前时间电器没数据，则认为判断对了
-                    pass
+        for app, instance in app_instances:
+            timestamps=predicted_dict[app][instance].index
+            for t in tqdm(timestamps, desc='proportion_total_energy_assigned'):
+            # for app, instance in app_instances:
+                a = a + np.abs(truth_dict[app][instance][t] - predicted_dict[app][instance][t])
+                b = b + predicted_dict[app][instance][t]
                 # b = b + predicted_dict[app][instance][t]
         return 1 - a / (2 * b)
 
@@ -196,7 +208,7 @@ class Inference_House_Vid():
         start = min(min(predicted_ps.index), min(truth_ps.index))
         end = max(max(predicted_ps.index), max(truth_ps.index))
         y_true, y_pred = [], []
-        for time_stamp in pd.date_range(start, end):
+        for time_stamp in pd.date_range(start, end,freq='S'):
             try:
                 _pre = predicted_ps[time_stamp]
                 _truth = truth_ps[time_stamp]
