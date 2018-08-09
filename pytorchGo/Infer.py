@@ -5,6 +5,7 @@ from time import time
 import numpy as np
 import torch
 from tqdm import tqdm
+from visdom import Visdom
 
 import Tools
 from Parameters import Parameters
@@ -106,6 +107,26 @@ class Infer():
         for predicted, _target in zip(output, target):
             if (predicted == _target):
                 assertTrue += 1
+        print(assertTrue)
+        print(assertTrue / len(target))
+
+    def infer_seqAttn_classifi(self,batch_iter,device):
+        for input_batch, target_batch in batch_iter:
+            _inputs = torch.from_numpy(np.array(input_batch)).float().to(device)
+            _targets = torch.from_numpy(np.array(target_batch)[:,:-1]).long().to(device)
+            target = torch.from_numpy(np.array(target_batch)[:, -1]).long().to(device)
+            output = self.predictor(_inputs,_targets)[0].topk(1)[1].reshape(-1)
+            print('只执行一次！')
+        assertTrue = 0
+        justice=[]
+        for predicted, _target in zip(output, target):
+            if (predicted == _target):
+                assertTrue += 1
+                justice.append(1)
+            else:
+                justice.append(0)
+        vis=Visdom()
+        vis.line(Y=np.array(justice),X=np.arange(start=0,stop=len(justice)))
         print(assertTrue)
         print(assertTrue / len(target))
 

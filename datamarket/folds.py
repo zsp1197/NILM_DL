@@ -4,16 +4,21 @@
 import numpy as np
 from scipy.stats import entropy
 from scipy.spatial import distance
+import pandas as pd
+
+import Tools
+
+
 class Folds():
     def __init__(self, inputs: np.array, targets: np.array):
         self.inputs = inputs
         self.targets = targets
 
-    def cut_sequence(self, start_idx, end_idx, seq:np.array,concat=False):
+    def cut_sequence(self, start_idx, end_idx, seq: np.array, concat=False):
         cutted = seq[start_idx:end_idx]
         remaining = [seq[0:start_idx], seq[end_idx:-1]]
-        if(concat):
-            remaining=np.concatenate(remaining)
+        if (concat):
+            remaining = np.concatenate(remaining)
         return cutted, remaining
 
     def seq_of_probabilities(self, seq_of_ints: np.array, ints: np.array):
@@ -25,25 +30,41 @@ class Folds():
         # 看看最合适序列
         length = len(self.targets)
         win_len = length // 10
-        theints=np.array(list(range(min(self.targets),max(self.targets)+1)))
-        distances=[]
-        start_idxes=[]
-        min_distance=999999
+        theints = np.array(list(range(min(self.targets), max(self.targets) + 1)))
+        distances = []
+        start_idxes = []
+        min_distance = 999999
         for start in range(length):
-            if(start<2*win_len or start>length-1.5*win_len):
+            if (start < 2 * win_len or start > length - 1.5 * win_len):
                 continue
-            cutted, remains = self.cut_sequence(start_idx=start, end_idx=start + win_len,seq=self.targets)
+            cutted, remains = self.cut_sequence(start_idx=start, end_idx=start + win_len, seq=self.targets)
             theremains = np.concatenate(remains)
-            hist_cutted=self.seq_of_probabilities(seq_of_ints=cutted,ints=theints)
-            hist_remains=self.seq_of_probabilities(seq_of_ints=theremains,ints=theints)
+            hist_cutted = self.seq_of_probabilities(seq_of_ints=cutted, ints=theints)
+            hist_remains = self.seq_of_probabilities(seq_of_ints=theremains, ints=theints)
             # distance=(entropy(hist_cutted,hist_remains)+entropy(hist_remains,hist_cutted))/2
-            thedistance=distance.euclidean(hist_cutted,hist_remains)
+            thedistance = distance.euclidean(hist_cutted, hist_remains)
             distances.append(thedistance)
             start_idxes.append(start)
-            if(thedistance<min_distance):
-                min_distance=thedistance
-                best_train=theremains
-                best_infer=cutted
-                best_start=start
-                best_end=start+win_len
-        return best_start,best_end
+            if (thedistance < min_distance):
+                min_distance = thedistance
+                best_train = theremains
+                best_infer = cutted
+                best_start = start
+                best_end = start + win_len
+        return best_start, best_end
+
+    def vid_cutted(self, chunks_list, best_start, best_end):
+        # start_bin = chunks_list[best_start]
+        # end_bin = chunks_list[best_end]
+        series = []
+        series_idx = []
+        for i, bin in enumerate(chunks_list[best_start:best_end + 1]):
+            series.append(pd.Series(data=bin.total_value,
+                                    index=pd.date_range(start=bin.start_time, end=bin.start_time + bin.delta_time,
+                                                        freq='S')))
+            series_idx.append(pd.Series(data=best_start + i,
+                                        index=pd.date_range(start=bin.start_time, end=bin.start_time + bin.delta_time,
+                                                            freq='S')))
+        total_series = pd.concat(series)
+        Tools.server_ps_plot(total_series)
+        Tools.server_ps_plot(pd.concat(series_idx))

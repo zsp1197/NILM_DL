@@ -122,12 +122,11 @@ class Combine_MLP_SET(nn.Module):
         return out
 
 
-
 class SeqEmbedTime(nn.Module):
     def __init__(self, target_num, paras=Parameters()):
         super(SeqEmbedTime, self).__init__()
         self.paras = paras
-        self.target_num=target_num
+        self.target_num = target_num
         self.rnn = nn.LSTM(input_size=target_num, hidden_size=self.paras.embed_size * 10, batch_first=True)
         self.embed_past = nn.ModuleList(
             [nn.Linear(self.paras.embed_size * 10, self.paras.embed_size), nn.BatchNorm1d(self.paras.embed_size),
@@ -174,6 +173,7 @@ class SeqEmbedTime(nn.Module):
     def random_label(self):
         return random.choice(list(range(self.target_num)))
 
+
 class Combine_MLP_SETime(nn.Module):
     def __init__(self, mlp, seqeTime: SeqEmbedTime, output_size, predict=1, paras=Parameters()):
         super(Combine_MLP_SETime, self).__init__()
@@ -188,7 +188,7 @@ class Combine_MLP_SETime(nn.Module):
     def forward(self, _inputs, _targets):
         # _inputs: (batch,seq_len,input_size:4)
         # _targets: (batch,seq_len,1)
-        seqeTime_out = self.seqeTime(_inputs,_targets)
+        seqeTime_out = self.seqeTime(_inputs, _targets)
         mlp_out = self.mlp(_inputs[:, -1, :])
         combine_coeffi_mlp = F.sigmoid(self.combine_coeffi_mlp)
         combine_coeffi_seq = F.sigmoid(self.combine_coeffi_seq)
@@ -203,3 +203,112 @@ class Combine_MLP_SETime(nn.Module):
         mlp_out = torch.exp(self.mlp(_inputs[:, -1, :]))
         out = mlp_out * self.combine_coeffi + seqet_out * (1 - self.combine_coeffi)
         return out
+
+
+class SeqAttn(nn.Module):
+    def __init__(self, target_num):
+        super(SeqAttn, self).__init__()
+        self.paras = Parameters()
+        self.target_num = target_num
+        self.embed_query = nn.Sequential(nn.Linear(in_features=3, out_features=4), nn.ReLU())
+        self.embed_key = nn.Sequential(nn.Linear(in_features=4, out_features=4), nn.ReLU())
+        self.def_paras_4_predict_state()
+        self.def_paras_4_predict_od()
+        self.def_paras_4_embed_past()
+
+    def def_paras_4_predict_state(self):
+        self.transform_targets = nn.ModuleList([nn.Linear(self.target_num, self.paras.embed_size * 20),
+                                                # nn.BatchNorm1d(self.paras.embed_size * 20),
+                                                nn.ReLU(),
+                                                nn.Linear(self.paras.embed_size * 20, self.paras.embed_size * 10),
+                                                # nn.BatchNorm1d(self.paras.embed_size * 10),
+                                                nn.ReLU(),
+                                                nn.Linear(self.paras.embed_size * 10, self.paras.embed_size),
+                                                # nn.BatchNorm1d(self.paras.embed_size),
+                                                nn.ReLU()])
+        self.transform_query = nn.Sequential(nn.Linear(3, self.paras.embed_size),
+                                             nn.BatchNorm1d(self.paras.embed_size),
+                                             nn.ReLU())
+        self.decode = nn.Sequential(nn.Linear(self.paras.embed_size, self.paras.embed_size * 4), nn.ReLU(),
+                                    nn.Linear(self.paras.embed_size * 4, self.paras.embed_size * 20),
+                                    nn.BatchNorm1d(self.paras.embed_size * 20), nn.ReLU(),
+                                    nn.Linear(self.paras.embed_size * 20, self.target_num),
+                                    nn.BatchNorm1d(self.target_num), nn.ReLU())
+
+    def def_paras_4_predict_od(self):
+        self.transform_targets_od = nn.ModuleList([nn.Linear(self.target_num, self.paras.embed_size * 20),
+                                                   # nn.BatchNorm1d(self.paras.embed_size * 20),
+                                                   nn.ReLU(),
+                                                   nn.Linear(self.paras.embed_size * 20, self.paras.embed_size * 10),
+                                                   # nn.BatchNorm1d(self.paras.embed_size * 10),
+                                                   nn.ReLU(),
+                                                   nn.Linear(self.paras.embed_size * 10, self.paras.embed_size),
+                                                   # nn.BatchNorm1d(self.paras.embed_size),
+                                                   nn.ReLU()])
+        self.transform_query_od = nn.Sequential(nn.Linear(3, self.paras.embed_size),
+                                                nn.BatchNorm1d(self.paras.embed_size),
+                                                nn.ReLU())
+
+        self.decode_od = nn.Sequential(nn.Linear(self.paras.embed_size, self.paras.embed_size // 2),
+                                       nn.BatchNorm1d(self.paras.embed_size // 2),
+                                       nn.ReLU(),
+                                       nn.Linear(self.paras.embed_size // 2, 1),
+                                       nn.ReLU())
+
+    def def_paras_4_embed_past(self):
+        self.rnn = nn.LSTM(input_size=self.target_num, hidden_size=self.paras.embed_size, batch_first=True)
+
+    def forward(self, _inputs, _targets):
+        # batch first
+        query = torch.stack([_inputs[:, -1, :][:, 0], _inputs[:, -1, :][:, 2], _inputs[:, -1, :][:, 3]],
+                            dim=1).unsqueeze(1).to(next(self.parameters()).device)
+        attn_weights = self.attn(_inputs[:, :-1, :], query)
+        targets_applied = attn_weights * self.refineInput_onehot(_targets)
+        targets_applied = torch.sum(targets_applied, 1)
+        embed_past = self.embed_past(_targets)
+        predicted_states = self.predict_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
+        _predicted_state_logits = F.log_softmax(predicted_states, dim=1)
+        _predicted_od = self.predict_od(query=query, targets_applied=targets_applied, embed_past=embed_past,
+                                        predicted_states=F.softmax(predicted_states, dim=1))
+        return _predicted_state_logits, _predicted_od
+
+    def embed_past(self, _targets):
+        return self.rnn(self.refineInput_onehot(_targets))[0][:, -1, :]
+
+    def get_loss(self, _predicted_logits, target_idxs, _predicted_ods, target_ods):
+        classifi_criterion = nn.NLLLoss()
+        od_criterion = nn.MSELoss()
+        classifi_loss = classifi_criterion(_predicted_logits, target_idxs)
+        od_loss = od_criterion(_predicted_ods, target_ods.reshape(-1, 1))
+        # TODO add regulation
+        return self.paras.trade_off_classifi * classifi_loss + (
+                1 - self.paras.trade_off_classifi) * od_loss, classifi_loss, od_loss
+
+    def predict_od(self, query, targets_applied, embed_past, predicted_states):
+        transformed_query = self.transform_query_od(query.squeeze(1))
+        transformed_targets = targets_applied
+        for net in self.transform_targets_od:
+            transformed_targets = net(transformed_targets)
+        od = self.decode_od(transformed_query + transformed_targets + embed_past)
+        return od
+
+    def predict_state(self, query, targets_applied, embed_past):
+        transformed_query = self.transform_query(query.squeeze(1))
+
+        transformed_targets = targets_applied
+        for net in self.transform_targets:
+            transformed_targets = net(transformed_targets)
+        logits = self.decode(transformed_query + transformed_targets + embed_past)
+        return logits
+
+    def attn(self, keys, query):
+        embed_query = self.embed_query(query).squeeze(1).unsqueeze(2)
+        embed_keys = self.embed_key(keys)
+        weights = torch.matmul(embed_keys, embed_query)
+        weights = F.softmax(weights)
+        return weights
+
+    def refineInput_onehot(self, input):
+        return torch.zeros(input.shape[0], input.shape[1], self.target_num).scatter_(2, input.cpu().unsqueeze(-1),
+                                                                                     1).to(
+            next(self.parameters()).device)
