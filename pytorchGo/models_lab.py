@@ -266,11 +266,12 @@ class SeqAttn(nn.Module):
         targets_applied = attn_weights * self.refineInput_onehot(_targets)
         targets_applied = torch.sum(targets_applied, 1)
         embed_past = self.embed_past(_targets)
-        predicted_states = self.predict_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
-        _predicted_state_logits = F.log_softmax(predicted_states, dim=1)
+        estimate_states = self.estimate_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
+        predict_states = self.predict_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
+        _estimate_state_logits = F.log_softmax(estimate_states, dim=1)
         _predicted_od = self.predict_od(query=query, targets_applied=targets_applied, embed_past=embed_past,
-                                        predicted_states=F.softmax(predicted_states, dim=1))
-        return _predicted_state_logits, _predicted_od
+                                        predicted_states=F.softmax(estimate_states, dim=1))
+        return _estimate_state_logits, _predicted_od
 
     def embed_past(self, _targets):
         return self.rnn(self.refineInput_onehot(_targets))[0][:, -1, :]
@@ -284,15 +285,21 @@ class SeqAttn(nn.Module):
         return self.paras.trade_off_classifi * classifi_loss + (
                 1 - self.paras.trade_off_classifi) * od_loss, classifi_loss, od_loss
 
+    def predict_state(self, query, targets_applied, embed_past):
+        transformed_query = self.transform_query(query.squeeze(1))
+
+        transformed_targets = targets_applied
+
+
     def predict_od(self, query, targets_applied, embed_past, predicted_states):
         transformed_query = self.transform_query_od(query.squeeze(1))
-        transformed_targets = targets_applied
+        transformed_targets = targets_applied+predicted_states
         for net in self.transform_targets_od:
             transformed_targets = net(transformed_targets)
         od = self.decode_od(transformed_query + transformed_targets + embed_past)
         return od
 
-    def predict_state(self, query, targets_applied, embed_past):
+    def estimate_state(self, query, targets_applied, embed_past):
         transformed_query = self.transform_query(query.squeeze(1))
 
         transformed_targets = targets_applied

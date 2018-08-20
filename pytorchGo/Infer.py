@@ -125,8 +125,8 @@ class Infer():
                 justice.append(1)
             else:
                 justice.append(0)
-        vis=Visdom()
-        vis.line(Y=np.array(justice),X=np.arange(start=0,stop=len(justice)))
+        # vis=Visdom()
+        # vis.line(Y=np.array(justice),X=np.arange(start=0,stop=len(justice)))
         print(assertTrue)
         print(assertTrue / len(target))
 
