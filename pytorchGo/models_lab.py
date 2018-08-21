@@ -210,11 +210,13 @@ class SeqAttn(nn.Module):
         super(SeqAttn, self).__init__()
         self.paras = Parameters()
         self.target_num = target_num
-        self.embed_query = nn.Sequential(nn.Linear(in_features=3, out_features=4), nn.ReLU())
+        self.embed_query = nn.Sequential(nn.Linear(in_features=1, out_features=4), nn.ReLU())
+        # self.embed_query = nn.Sequential(nn.Linear(in_features=3, out_features=4), nn.ReLU())
         self.embed_key = nn.Sequential(nn.Linear(in_features=4, out_features=4), nn.ReLU())
         self.def_paras_4_predict_state()
         self.def_paras_4_predict_od()
         self.def_paras_4_embed_past()
+        self.targets_embeddings=nn.Embedding(self.target_num,self.paras.embed_size)
 
     def def_paras_4_predict_state(self):
         self.transform_targets = nn.ModuleList([nn.Linear(self.target_num, self.paras.embed_size * 20),
@@ -226,7 +228,7 @@ class SeqAttn(nn.Module):
                                                 nn.Linear(self.paras.embed_size * 10, self.paras.embed_size),
                                                 # nn.BatchNorm1d(self.paras.embed_size),
                                                 nn.ReLU()])
-        self.transform_query = nn.Sequential(nn.Linear(3, self.paras.embed_size),
+        self.transform_query = nn.Sequential(nn.Linear(1, self.paras.embed_size),
                                              nn.BatchNorm1d(self.paras.embed_size),
                                              nn.ReLU())
         self.decode = nn.Sequential(nn.Linear(self.paras.embed_size, self.paras.embed_size * 4), nn.ReLU(),
@@ -260,16 +262,20 @@ class SeqAttn(nn.Module):
 
     def forward(self, _inputs, _targets):
         # batch first
-        query = torch.stack([_inputs[:, -1, :][:, 0], _inputs[:, -1, :][:, 2], _inputs[:, -1, :][:, 3]],
+        query_od = torch.stack([_inputs[:, -1, :][:, 0], _inputs[:, -1, :][:, 2], _inputs[:, -1, :][:, 3]],
+                            dim=1).unsqueeze(1).to(next(self.parameters()).device)
+        query = torch.stack([_inputs[:, -1, :][:, 0]],
                             dim=1).unsqueeze(1).to(next(self.parameters()).device)
         attn_weights = self.attn(_inputs[:, :-1, :], query)
+        # embedded_targets=self.targets_embeddings(_targets)
+        # targets_applied = attn_weights * embedded_targets
         targets_applied = attn_weights * self.refineInput_onehot(_targets)
         targets_applied = torch.sum(targets_applied, 1)
         embed_past = self.embed_past(_targets)
         estimate_states = self.estimate_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
         predict_states = self.predict_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
         _estimate_state_logits = F.log_softmax(estimate_states, dim=1)
-        _predicted_od = self.predict_od(query=query, targets_applied=targets_applied, embed_past=embed_past,
+        _predicted_od = self.predict_od(query=query_od, targets_applied=targets_applied, embed_past=embed_past,
                                         predicted_states=F.softmax(estimate_states, dim=1))
         return _estimate_state_logits, _predicted_od
 
