@@ -269,11 +269,14 @@ class SeqAttn(nn.Module):
         attn_weights = self.attn(_inputs[:, :-1, :], query)
         # embedded_targets=self.targets_embeddings(_targets)
         # targets_applied = attn_weights * embedded_targets
-        targets_applied = attn_weights * self.refineInput_onehot(_targets)
+        transformed_targets=self.refineInput_onehot(_targets)
+        for net in self.transform_targets:
+            transformed_targets = net(transformed_targets)
+        targets_applied = attn_weights * transformed_targets
         targets_applied = torch.sum(targets_applied, 1)
         embed_past = self.embed_past(_targets)
         estimate_states = self.estimate_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
-        predict_states = self.predict_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
+        # predict_states = self.predict_state(query=query, targets_applied=targets_applied, embed_past=embed_past)
         _estimate_state_logits = F.log_softmax(estimate_states, dim=1)
         _predicted_od = self.predict_od(query=query_od, targets_applied=targets_applied, embed_past=embed_past,
                                         predicted_states=F.softmax(estimate_states, dim=1))
@@ -299,9 +302,13 @@ class SeqAttn(nn.Module):
 
     def predict_od(self, query, targets_applied, embed_past, predicted_states):
         transformed_query = self.transform_query_od(query.squeeze(1))
-        transformed_targets = targets_applied+predicted_states
-        for net in self.transform_targets_od:
-            transformed_targets = net(transformed_targets)
+        predicted_states = self.refineInput_onehot(predicted_states.topk(1)[1])
+        for net in self.transform_targets:
+            predicted_states = net(predicted_states)
+        predicted_states_embed=predicted_states.squeeze(1)
+        transformed_targets = targets_applied+predicted_states_embed
+        # for net in self.transform_targets_od:
+        #     transformed_targets = net(transformed_targets)
         od = self.decode_od(transformed_query + transformed_targets + embed_past)
         return od
 
@@ -309,8 +316,8 @@ class SeqAttn(nn.Module):
         transformed_query = self.transform_query(query.squeeze(1))
 
         transformed_targets = targets_applied
-        for net in self.transform_targets:
-            transformed_targets = net(transformed_targets)
+        # for net in self.transform_targets:
+        #     transformed_targets = net(transformed_targets)
         logits = self.decode(transformed_query + transformed_targets + embed_past)
         return logits
 
