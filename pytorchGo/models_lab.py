@@ -216,18 +216,18 @@ class SeqAttn(nn.Module):
         self.def_paras_4_predict_state()
         self.def_paras_4_predict_od()
         self.def_paras_4_embed_past()
-        self.targets_embeddings=nn.Embedding(self.target_num,self.paras.embed_size)
+        self.targets_embeddings = nn.Embedding(self.target_num, self.paras.embed_size)
 
     def def_paras_4_predict_state(self):
-        self.transform_targets = nn.ModuleList([nn.Linear(self.target_num, self.paras.embed_size * 20),
-                                                # nn.BatchNorm1d(self.paras.embed_size * 20),
-                                                nn.ReLU(),
-                                                nn.Linear(self.paras.embed_size * 20, self.paras.embed_size * 10),
-                                                # nn.BatchNorm1d(self.paras.embed_size * 10),
-                                                nn.ReLU(),
-                                                nn.Linear(self.paras.embed_size * 10, self.paras.embed_size),
-                                                # nn.BatchNorm1d(self.paras.embed_size),
-                                                nn.ReLU()])
+        self.transform_targets = nn.Sequential(nn.Linear(self.target_num, self.paras.embed_size * 20),
+                                               # nn.BatchNorm1d(self.paras.embed_size * 20),
+                                               nn.ReLU(),
+                                               nn.Linear(self.paras.embed_size * 20, self.paras.embed_size * 10),
+                                               # nn.BatchNorm1d(self.paras.embed_size * 10),
+                                               nn.ReLU(),
+                                               nn.Linear(self.paras.embed_size * 10, self.paras.embed_size),
+                                               # nn.BatchNorm1d(self.paras.embed_size),
+                                               nn.ReLU())
         self.transform_query = nn.Sequential(nn.Linear(1, self.paras.embed_size),
                                              nn.BatchNorm1d(self.paras.embed_size),
                                              nn.ReLU())
@@ -259,19 +259,20 @@ class SeqAttn(nn.Module):
 
     def def_paras_4_embed_past(self):
         self.rnn = nn.LSTM(input_size=self.target_num, hidden_size=self.paras.embed_size, batch_first=True)
+        # self.rnn = nn.LSTM(input_size=self.paras.embed_size, hidden_size=self.paras.embed_size, batch_first=True)
 
     def forward(self, _inputs, _targets):
         # batch first
         query_od = torch.stack([_inputs[:, -1, :][:, 0], _inputs[:, -1, :][:, 2], _inputs[:, -1, :][:, 3]],
-                            dim=1).unsqueeze(1).to(next(self.parameters()).device)
+                               dim=1).unsqueeze(1).to(next(self.parameters()).device)
         query = torch.stack([_inputs[:, -1, :][:, 0]],
                             dim=1).unsqueeze(1).to(next(self.parameters()).device)
         attn_weights = self.attn(_inputs[:, :-1, :], query)
         # embedded_targets=self.targets_embeddings(_targets)
         # targets_applied = attn_weights * embedded_targets
-        transformed_targets=self.refineInput_onehot(_targets)
-        for net in self.transform_targets:
-            transformed_targets = net(transformed_targets)
+        transformed_targets = self.transform_targets(self.refineInput_onehot(_targets))
+        # for net in self.transform_targets:
+        #     transformed_targets = net(transformed_targets)
         targets_applied = attn_weights * transformed_targets
         targets_applied = torch.sum(targets_applied, 1)
         embed_past = self.embed_past(_targets)
@@ -284,6 +285,7 @@ class SeqAttn(nn.Module):
 
     def embed_past(self, _targets):
         return self.rnn(self.refineInput_onehot(_targets))[0][:, -1, :]
+        # return self.rnn(self.transform_targets(self.refineInput_onehot(_targets)))[0][:, -1, :]
 
     def get_loss(self, _predicted_logits, target_idxs, _predicted_ods, target_ods):
         classifi_criterion = nn.NLLLoss()
@@ -296,17 +298,15 @@ class SeqAttn(nn.Module):
 
     def predict_state(self, query, targets_applied, embed_past):
         transformed_query = self.transform_query(query.squeeze(1))
-
         transformed_targets = targets_applied
-
 
     def predict_od(self, query, targets_applied, embed_past, predicted_states):
         transformed_query = self.transform_query_od(query.squeeze(1))
-        predicted_states = self.refineInput_onehot(predicted_states.topk(1)[1])
-        for net in self.transform_targets:
-            predicted_states = net(predicted_states)
-        predicted_states_embed=predicted_states.squeeze(1)
-        transformed_targets = targets_applied+predicted_states_embed
+        predicted_states = self.transform_targets(self.refineInput_onehot(predicted_states.topk(1)[1]))
+        # for net in self.transform_targets:
+        #     predicted_states = net(predicted_states)
+        predicted_states_embed = predicted_states.squeeze(1)
+        transformed_targets = targets_applied + predicted_states_embed
         # for net in self.transform_targets_od:
         #     transformed_targets = net(transformed_targets)
         od = self.decode_od(transformed_query + transformed_targets + embed_past)
@@ -325,7 +325,7 @@ class SeqAttn(nn.Module):
         embed_query = self.embed_query(query).squeeze(1).unsqueeze(2)
         embed_keys = self.embed_key(keys)
         weights = torch.matmul(embed_keys, embed_query)
-        weights = F.softmax(weights)
+        weights = F.softmax(weights, dim=0)
         return weights
 
     def refineInput_onehot(self, input):
