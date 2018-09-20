@@ -11,6 +11,7 @@ import Tools
 from Parameters import Parameters
 from Tools import sliding_window
 from nilm_tools import *
+from sklearn.metrics import f1_score
 
 
 class Infer():
@@ -133,10 +134,30 @@ class Infer():
     #     print(assertTrue / len(target))
 
     def infer_seqAttn_classifi(self, batch_iter, device, ahead=1):
-        # TODO 加入时长估计的结果
+        od_dic_list, od_truth_dic_list, output_dic_list, target_dic_list = self.seqAttn_pre_ahead(ahead, batch_iter,
+                                                                                                  device)
+        for pre in range(1, ahead + 1):
+            assertTrue = 0
+            justice = []
+            output = output_dic_list[pre]
+            target = target_dic_list[pre]
+            for predicted, _target in zip(output, target):
+                if (predicted == _target):
+                    assertTrue += 1
+                    justice.append(1)
+                else:
+                    justice.append(0)
+            micro = f1_score(target, output, average='micro')
+            macro = f1_score(target, output, average='macro')
+            odMean=decode_delta_time(abs(od_dic_list[pre]-od_truth_dic_list[pre]).mean().cpu().detach().numpy())
+            print(
+                f'pre:{pre} acc:{assertTrue / len(target)} micro:{micro} macro:{macro} odMean: {odMean} num_true:{assertTrue}')
+
+    def seqAttn_pre_ahead(self, ahead, batch_iter, device):
         output_dic_list = {}
         target_dic_list = {}
         od_dic_list = {}
+        od_truth_dic_list = {}
 
         def refine__target_batch(_target_batch, output_dic_list, pre):
             if (pre == 1):
@@ -154,6 +175,7 @@ class Infer():
             else:
                 result = np.array(_input_batch)
                 for _pre in range(1, pre):
+                    # TODO 这里其实只改了startTime，而共率值等没有变。。。
                     result[:, -(pre - _pre + 1), 0] = self.refine_input_startTime_seq(result, od_dic_list, pre, _pre)
             return result.tolist()
 
@@ -161,6 +183,7 @@ class Infer():
             output_dic_list.update({pre: []})
             target_dic_list.update({pre: []})
             od_dic_list.update({pre: []})
+            od_truth_dic_list.update({pre: []})
         for input_batch, target_batch in batch_iter:
             print('只可执行一次，batch要打满')
             for pre in range(1, ahead + 1):
@@ -176,20 +199,8 @@ class Infer():
                 output_dic_list[pre] = output
                 target_dic_list[pre] = target
                 od_dic_list[pre] = od
-        for pre in range(1, ahead + 1):
-            assertTrue = 0
-            justice = []
-            output = output_dic_list[pre]
-            target = target_dic_list[pre]
-            for predicted, _target in zip(output, target):
-                if (predicted == _target):
-                    assertTrue += 1
-                    justice.append(1)
-                else:
-                    justice.append(0)
-            # print(assertTrue)
-            # print(assertTrue / len(target))
-            print(f'pre:{pre} acc:{assertTrue / len(target)} num_true:{assertTrue}')
+                od_truth_dic_list[pre] = torch.Tensor(np.array(_input_batch)[:, -1, 1]).to(od.device)
+        return od_dic_list, od_truth_dic_list, output_dic_list, target_dic_list
 
     def seq_infer_one(self, device, input_batch, target_batch):
         _inputs = torch.from_numpy(np.array(input_batch)).float().to(device)
@@ -201,7 +212,7 @@ class Infer():
         return output, target, od
 
     def refine_input_startTime_seq(self, _input_batch, od_dic_list, pre, _pre):
-        # TODO index取对与否不敢确定，但效果既然这么好，就懒得调了
+        # TODO index取对与否不敢确定，但效果既然这么好，就懒得调了hhh
         assert pre > 1
         last_one = _input_batch[:, -(pre - _pre), :]
         tmp_od_np = od_dic_list[_pre].detach().cpu().numpy()
