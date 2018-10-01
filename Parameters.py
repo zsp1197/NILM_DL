@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 class Parameters(object):
     def __init__(self):
+        print('Parameters被创建')
         self.penalty = 999999
         self.considered_appliances = []
         # self.considered_appliances=['dish washer','fridge']

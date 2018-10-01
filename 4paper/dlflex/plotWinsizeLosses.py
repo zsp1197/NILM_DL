@@ -20,7 +20,7 @@ for fileName in os.listdir(sourcesPath):
 totallosses_lst, classifi_losses_lst, od_losses_lst = [], [], []
 legends = []
 accepted_keys = [5, 15, 18, 20, 25]
-cut_idx = 800
+cut_idx = -1
 for key, losses_tuple in losses_dict.items():
     if (True):
     # if (key in accepted_keys):

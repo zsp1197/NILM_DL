@@ -310,6 +310,7 @@ class SeqAttn(nn.Module):
         # for net in self.transform_targets_od:
         #     transformed_targets = net(transformed_targets)
         od = self.decode_od(transformed_query + transformed_targets + embed_past)
+        # od = self.decode_od(transformed_targets + embed_past)
         return od
 
     def estimate_state(self, query, targets_applied, embed_past):

@@ -1,4 +1,5 @@
 import datetime
+import os
 import shutil
 import numpy as np
 import pandas as pd
@@ -340,3 +341,15 @@ def cut_series(series: pd.Series, startTime: pd.Timestamp, endTime: pd.Timestamp
     # if (fill_zero and concat):
     #     assert len(cutted) == len(remaining)
     return cutted, remaining
+
+def create_parent_directory(filepath):
+    '''
+    check if parent direcory of filepath exists, otherwise create the parent directory
+    :return: filepath
+    '''
+    from pathlib import Path
+    parent_path=str(Path(filepath).parent)
+    if not os.path.exists(parent_path):
+        os.makedirs(parent_path)
+        print('hio')
+    return filepath

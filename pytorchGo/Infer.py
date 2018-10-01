@@ -15,7 +15,7 @@ from sklearn.metrics import f1_score
 
 
 class Infer():
-    def credients(self, input_bin, target_bin, predictor, paras=Parameters()):
+    def credients(self, input_bin, target_bin, predictor, paras):
         # assert len(input_bin) == len(target_bin)
         self.paras = paras
         self.input_bin = input_bin
@@ -133,9 +133,36 @@ class Infer():
     #     print(assertTrue)
     #     print(assertTrue / len(target))
 
-    def infer_seqAttn_classifi(self, batch_iter, device, ahead=1):
-        od_dic_list, od_truth_dic_list, output_dic_list, target_dic_list = self.seqAttn_pre_ahead(ahead, batch_iter,
-                                                                                                  device)
+    def done_to_cpu(self,thedict):
+        for key, var in thedict.items():
+            thedict[key]=var.detach().cpu()
+        return thedict
+
+    def infer_seqAttn_classifi(self, batch_iter, device, ahead=1, r2_dict=None,bigIter=False):
+
+        if(bigIter):
+            od_dic_BIGlist, od_truth_dic_BIGlist, output_dic_BIGlist, target_dic_BIGlist=[],[],[],[]
+            for batch in batch_iter:
+                tmp_iter=(batch,)
+                od_dic_list_tmp, od_truth_dic_list_tmp, output_dic_list_tmp, target_dic_list_tmp = self.seqAttn_pre_ahead(ahead,
+                                                                                                          tmp_iter,
+                                                                                                          device,
+                                                                                                          r2_dict)
+                od_dic_BIGlist.append(self.done_to_cpu(od_dic_list_tmp))
+                od_truth_dic_BIGlist.append(self.done_to_cpu(od_truth_dic_list_tmp))
+                output_dic_BIGlist.append(self.done_to_cpu(output_dic_list_tmp))
+                target_dic_BIGlist.append(self.done_to_cpu(target_dic_list_tmp))
+            from copy import deepcopy
+            keys=deepcopy(list(od_dic_list_tmp.keys()))
+            od_dic_list, od_truth_dic_list, output_dic_list, target_dic_list={},{},{},{}
+            for key in keys:
+                od_dic_list.update({key:torch.cat([i[key] for i in od_dic_BIGlist])})
+                od_truth_dic_list.update({key:torch.cat([i[key] for i in od_truth_dic_BIGlist])})
+                output_dic_list.update({key:torch.cat([i[key] for i in output_dic_BIGlist])})
+                target_dic_list.update({key:torch.cat([i[key] for i in target_dic_BIGlist])})
+        else:
+            od_dic_list, od_truth_dic_list, output_dic_list, target_dic_list = self.seqAttn_pre_ahead(ahead, batch_iter,
+                                                                                                      device, r2_dict)
         for pre in range(1, ahead + 1):
             assertTrue = 0
             justice = []
@@ -149,15 +176,24 @@ class Infer():
                     justice.append(0)
             micro = f1_score(target, output, average='micro')
             macro = f1_score(target, output, average='macro')
-            odMean=decode_delta_time(abs(od_dic_list[pre]-od_truth_dic_list[pre]).mean().cpu().detach().numpy())
+            odMean = decode_delta_time(abs(od_dic_list[pre] - od_truth_dic_list[pre]).mean().cpu().detach().numpy())
             print(
                 f'pre:{pre} acc:{assertTrue / len(target)} micro:{micro} macro:{macro} odMean: {odMean} num_true:{assertTrue}')
 
-    def seqAttn_pre_ahead(self, ahead, batch_iter, device):
+    def seqAttn_pre_ahead(self, ahead, batch_iter, device, r2_dict):
+        '''
+
+        :param ahead:
+        :param batch_iter: 这个iter要求只能进行一次迭代，这次迭代包含很多内容
+        :param device:
+        :param r2_dict:
+        :return:
+        '''
         output_dic_list = {}
         target_dic_list = {}
         od_dic_list = {}
         od_truth_dic_list = {}
+        Flag=False
 
         def refine__target_batch(_target_batch, output_dic_list, pre):
             if (pre == 1):
@@ -169,33 +205,39 @@ class Infer():
                     result[:, -(pre - _pre + 1)] = tmp_output_np
             return result.tolist()
 
-        def refine__input_batch_startTime(_input_batch, od_dic_list, pre):
+        def refine__input_batch(_input_batch, od_dic_list, output_dic_list, pre):
             if (pre == 1):
                 result = np.array(_input_batch)
             else:
                 result = np.array(_input_batch)
                 for _pre in range(1, pre):
-                    # TODO 这里其实只改了startTime，而共率值等没有变。。。
                     result[:, -(pre - _pre + 1), 0] = self.refine_input_startTime_seq(result, od_dic_list, pre, _pre)
+                    result[:, -(pre - _pre + 1), 1] = self.refine_input_deltaTime_seq(result, od_dic_list, pre, _pre)
+                    result[:, -(pre - _pre + 1), 2] = self.refine_input_meanPower_seq(result, output_dic_list,
+                                                                                      od_dic_list, pre, _pre, r2_dict)
+                    result[:, -(pre - _pre + 1), 3] = self.refine_input_deltaPower_seq(result, od_dic_list, pre, _pre)
             return result.tolist()
-
         for pre in range(1, ahead + 1):
             output_dic_list.update({pre: []})
             target_dic_list.update({pre: []})
             od_dic_list.update({pre: []})
             od_truth_dic_list.update({pre: []})
         for input_batch, target_batch in batch_iter:
-            print('只可执行一次，batch要打满')
+            if(Flag):
+                import warnings
+                warnings.warn('只可执行一次，batch要打满')
+            Flag=True
             for pre in range(1, ahead + 1):
                 seq_infer_len = self.paras.seq_len
+                # 序列起点
                 seq_start = pre - 1
+                # seq_end的前一个为被预估的
                 seq_end = seq_start + seq_infer_len
                 _input_batch = np.array(input_batch)[:, seq_start:seq_end, :].tolist()
-                _input_batch = refine__input_batch_startTime(_input_batch, od_dic_list, pre)
+                _input_batch = refine__input_batch(_input_batch, od_dic_list, output_dic_list, pre)
                 _target_batch = np.array(target_batch)[:, seq_start:seq_end].tolist()
                 _target_batch = refine__target_batch(_target_batch, output_dic_list, pre)
                 output, target, od = self.seq_infer_one(device, _input_batch, _target_batch)
-                # TODO 保存每一步的od
                 output_dic_list[pre] = output
                 target_dic_list[pre] = target
                 od_dic_list[pre] = od
@@ -221,6 +263,24 @@ class Infer():
         new_st = ((tmp_od_st + tmp_od_sec) % (3600 * 24)) / (3600 * 24)
         return new_st
         # return _input_batch[:, -(pre - _pre + 1), 0]
+
+    def refine_input_deltaTime_seq(self, _input_batch, od_dic_list, pre, _pre):
+        # TODO index取对与否不敢确定，但效果既然这么好，就懒得调了hhh
+        assert pre > 1
+        last_one = _input_batch[:, -(pre - _pre), :]
+        tmp_od_np = od_dic_list[_pre].detach().cpu().numpy()
+        return tmp_od_np
+
+    def refine_input_meanPower_seq(self, _input_batch, output_dic_list, od_dic_list, pre, _pre, r2_dict):
+        assert pre > 1
+        current_ss=output_dic_list[_pre].detach().cpu().numpy()
+        powers=np.array([r2_dict[i] for i in current_ss])
+        return powers
+
+    def refine_input_deltaPower_seq(self, _input_batch, od_dic_list, pre, _pre):
+        last_power = _input_batch[:, -(pre - _pre), 2]
+        current_power=_input_batch[:, -(pre - _pre)+1, 2]
+        return current_power-last_power
 
 
 class Predictor():
