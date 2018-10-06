@@ -139,7 +139,7 @@ class Infer():
         return thedict
 
     def infer_seqAttn_classifi(self, batch_iter, device, ahead=1, r2_dict=None,bigIter=False):
-
+        results={}
         if(bigIter):
             od_dic_BIGlist, od_truth_dic_BIGlist, output_dic_BIGlist, target_dic_BIGlist=[],[],[],[]
             for batch in batch_iter:
@@ -176,9 +176,24 @@ class Infer():
                     justice.append(0)
             micro = f1_score(target, output, average='micro')
             macro = f1_score(target, output, average='macro')
-            odMean = decode_delta_time(abs(od_dic_list[pre] - od_truth_dic_list[pre]).mean().cpu().detach().numpy())
+            # ratioes=(abs(decode_delta_time(od_dic_list[pre]) - decode_delta_time(od_truth_dic_list[pre]))/decode_delta_time(od_truth_dic_list[pre]).numpy().mean()).numpy()
+            ratioes=(abs(decode_delta_time(od_dic_list[pre]) - decode_delta_time(od_truth_dic_list[pre]))/decode_delta_time(od_truth_dic_list[pre])).numpy()
+            # ratioes=(abs(decode_delta_time(od_dic_list[pre]) - decode_delta_time(od_truth_dic_list[pre]))/decode_delta_time(od_truth_dic_list[pre])).numpy()
+            ratioes2=[]
+            for i in ratioes:
+                if(i>1):
+                    i=1
+                if(not i>=0 and not i<=1):
+                    i=0
+                ratioes2.append(i)
+            ratioes2=np.array(ratioes2)
+            odMean=ratioes2.mean()
+            # odMean = decode_delta_time(abs(od_dic_list[pre] - od_truth_dic_list[pre]).mean().cpu().detach().numpy())
+            # odMean = decode_delta_time(abs(od_dic_list[pre] - od_truth_dic_list[pre]).mean().cpu().detach().numpy())
+            results.update({pre:{'acc':assertTrue / len(target),'micro':micro,'macro':macro,'odMean':odMean}})
             print(
                 f'pre:{pre} acc:{assertTrue / len(target)} micro:{micro} macro:{macro} odMean: {odMean} num_true:{assertTrue}')
+        return results
 
     def seqAttn_pre_ahead(self, ahead, batch_iter, device, r2_dict):
         '''

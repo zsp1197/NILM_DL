@@ -68,3 +68,58 @@ class Folds():
         total_series = pd.concat(series)
         Tools.server_ps_plot(total_series)
         Tools.server_ps_plot(pd.concat(series_idx))
+
+    def load_folds_on_the_fly_credientes(self, predictor, folds_inputs, folds_targets, criterion, device,paras):
+        self.paras=paras
+        self.predictor = predictor
+        self.folds_inputs = folds_inputs
+        self.folds_targets = folds_targets
+        self.criterion = criterion
+        self.device = device
+
+    def folds_on_the_fly(self):
+        predicted = self.predictor(self.folds_inputs)
+        loss = self.criterion(predicted, self.folds_targets)
+        return loss
+
+    def folds_on_the_fly_2(self):
+        batch_iter = self.get_batch(inputs=self.folds_inputs, targets=self.folds_targets,seq_len=self.paras.seq_len,
+                                    num_per_batch=len(self.folds_inputs) + 999)
+        import torch
+        for input_batch, target_batch in batch_iter:
+            _inputs = torch.from_numpy(np.array(input_batch)).float().to(self.device)
+            _targets = torch.from_numpy(np.array(target_batch)[:, :-1]).long().to(self.device)
+            target = torch.from_numpy(np.array(target_batch)[:, -1]).long().to(self.device)
+            _predicted_logits, _predicted_ods = self.predictor(_inputs, _targets)
+            loss, classifi_loss, od_loss = self.predictor.get_loss(_predicted_logits=_predicted_logits,
+                                                                   target_idxs=target,
+                                                                   _predicted_ods=_predicted_ods,
+                                                                   target_ods=_inputs[:, -1, 1])
+        return loss, classifi_loss, od_loss
+
+    def get_batch(self, inputs, targets, num_per_batch, seq_len=0, step=1):
+        '''
+        最后一个batch可能数目不足num_per_batch
+        :param inputs:
+        :param targets:
+        :param num_per_batch:
+        :return:
+        '''
+        assert len(inputs) == len(targets)
+        if (seq_len <= 0):
+            seq_len = seq_len
+        input_wins_iter = Tools.sliding_window(inputs, size=seq_len, step=step)
+        target_wins_iter = Tools.sliding_window(targets, size=seq_len, step=step)
+        input_batch = []
+        target_batch = []
+        num = 0
+        for input_win in input_wins_iter:
+            input_batch.append(input_win)
+            target_batch.append(target_wins_iter.__next__())
+            num += 1
+            if (num == num_per_batch):
+                yield input_batch, target_batch
+                input_batch = []
+                target_batch = []
+                num = 0
+        yield input_batch, target_batch
